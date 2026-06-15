@@ -28,7 +28,7 @@ export async function postOperation(
     }
     const sql = operation.sql
       .split('\n')
-      .filter((line) => !line.trimStart().startsWith('--'))
+      .map((line) => line.replace(/--.*$/, ''))
       .join(' ');
     output = await selected.database.exec(sql);
   } else {
