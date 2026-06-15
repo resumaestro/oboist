@@ -1,0 +1,51 @@
+name = "resumaestro-oboist"
+main = "src/worker.ts"
+compatibility_date = "2026-06-14"
+compatibility_flags = ["nodejs_compat"]
+
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[observability.logs]
+invocation_logs = true
+
+[secrets]
+required = [
+  "CLOUDFLARE_TOKEN",
+  "OBOIST_SECRET",
+]
+
+[[secrets_store_secrets]]
+binding = "SLACK_CONFIG_TOKEN"
+store_id = "5376e6440f0a470496364c1a036ecac8"
+secret_name = "SLACK_CONFIG_TOKEN"
+
+[[secrets_store_secrets]]
+binding = "SLACK_CONFIG_REFRESH_TOKEN"
+store_id = "5376e6440f0a470496364c1a036ecac8"
+secret_name = "SLACK_CONFIG_REFRESH_TOKEN"
+
+[[d1_databases]]
+binding = "PRODUCTION"
+database_name = "resumaestro-pipeline"
+database_id = "72bff802-4593-4ed3-9c4f-1923bcb1b406"
+
+[[d1_databases]]
+binding = "STAGING"
+database_name = "resumaestro-pipeline-staging"
+database_id = "7461b3de-4ddb-4135-a662-27ad4edac793"
+
+
+[[d1_databases]]
+binding = "SANDBOX"
+database_name = "resumaestro-pipeline-sandbox"
+database_id = "21b64317-31a7-4da3-ad3f-7d8c535fd29a"
+
+[[kv_namespaces]]
+binding = "RESUMAESTRO_CONFIG"
+id = "0178e5c12f4945f0a230ac7d1f04b4fa"
+
+[[kv_namespaces]]
+binding = "RESUMAESTRO_PIPELINE"
+id = "2deb366330814a7ea7de36072fccaa77"

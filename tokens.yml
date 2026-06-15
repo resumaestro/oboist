@@ -1,0 +1,12 @@
+cloudflare:
+  scope:
+    - Workers Scripts Write
+    - D1 Write
+    - Secrets Store Write
+  variable:
+    - CLOUDFLARE_ACCOUNT_ID
+    - SECRETS_STORE_ID
+    - SLACK_APP_ID
+  secret:
+    - OBOIST_SECRET
+    - CLOUDFLARE_TOKEN
