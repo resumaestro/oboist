@@ -57,7 +57,9 @@ export const worker = {
         );
       }
 
-      console.error(JSON.stringify({ event: 'unhandled_error' }));
+      const message = error instanceof Error ? error.message : String(error);
+      const stack = error instanceof Error ? error.stack : undefined;
+      console.error(JSON.stringify({ event: 'unhandled_error', message, stack }));
       return createJsonResponse(
         { error: 'Internal server error' },
         { status: 500 },
