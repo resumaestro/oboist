@@ -40,6 +40,8 @@ export function parseRoute(request: Request): Route {
           return {
             action: 'updateManifest',
           };
+        default:
+          throw new HttpError(404, 'Not found');
       }
     case 'apply':
       return {
@@ -64,14 +66,16 @@ export function parseRoute(request: Request): Route {
         action: 'snapshot',
         target,
       };
-    case 'token':
-      if (!isStore(target)) {
-        throw new HttpError(400, 'Unknown target');
+    case 'token': {
+      const kind = new URL(request.url).searchParams.get('kind');
+      if (kind !== 'secret' && kind !== 'variable') {
+        throw new HttpError(400, 'kind must be "secret" or "variable"');
       }
       return {
-        action: 'snapshot',
-        target,
+        action: 'token',
+        kind,
       };
+    }
       default:
       throw new HttpError(404, 'Not found');
   }
