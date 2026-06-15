@@ -1,11 +1,11 @@
 import { requireAuthorization } from '#/auth';
 import { createJsonResponse, HttpError } from '#/http';
-import { postPutSecrets, postUpdateManifest } from '#/routes/admin';
+import { postUpdateManifest } from '#/routes/admin';
 import { postApply } from '#/routes/apply';
 import { postOperation } from '#/routes/operation';
 import { postSnapshot } from '#/routes/snapshot';
 import { getStatus } from '#/routes/status';
-import { getToken } from '#/routes/token';
+import { postToken } from '#/routes/token';
 import { parseRoute } from '#/routing';
 
 async function handleRequest(request: Request): Promise<Response> {
@@ -19,8 +19,6 @@ async function handleRequest(request: Request): Promise<Response> {
           return createJsonResponse({ ok: true });
         case 'status':
           return getStatus(route, request);
-        case 'token':
-          return getToken(route);
         default:
           throw new HttpError(404, 'Not found');
       }
@@ -34,8 +32,8 @@ async function handleRequest(request: Request): Promise<Response> {
           return postSnapshot(route, request);
         case 'updateManifest':
           return postUpdateManifest(route, request);
-        case 'putSecrets':
-          return postPutSecrets(route, request);
+        case 'token':
+          return postToken(route, request);
         default:
           throw new HttpError(404, 'Not found');
       }

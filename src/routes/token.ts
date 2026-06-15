@@ -1,29 +1,23 @@
-import { createJsonResponse, HttpError } from '#/http';
-import type { TokenRoute } from '#/types/routes';
-import { env } from 'cloudflare:workers';
+import { HttpError } from '#/http';
+import { TokenRoute } from '#/types/routes';
 
-const SECRETS_STORE_BINDINGS: Partial<Record<string, SecretsStoreSecret>> = {
-  SLACK_CONFIG_TOKEN: env.SLACK_CONFIG_TOKEN,
-  SLACK_CONFIG_REFRESH_TOKEN: env.SLACK_CONFIG_REFRESH_TOKEN,
+const postSecret = (route: TokenRoute, request: Request) => {
+  throw new HttpError(404, 'Not Implemented');
 };
 
-export async function getToken(route: TokenRoute): Promise<Response> {
+const postVariable = (route: TokenRoute, request: Request) => {
+  throw new HttpError(404, 'Not Implemented');
+};
+
+export async function postToken(
+  route: TokenRoute,
+  request: Request,
+): Promise<Response> {
   switch (route.kind) {
-    case 'secret': {
-      const binding = SECRETS_STORE_BINDINGS[route.name];
-      if (!binding) {
-        throw new HttpError(404, `Unknown secret: ${route.name}`);
-      }
-      const value = await binding.get();
-      return createJsonResponse({ name: route.name, value });
-    }
-    case 'variable': {
-      const value = await env.RESUMAESTRO_CONFIG.get(`variable:${route.name}`);
-      if (value === null) {
-        throw new HttpError(404, `Unknown variable: ${route.name}`);
-      }
-      return createJsonResponse({ name: route.name, value });
-    }
+    case 'secret':
+      return postSecret(route, request);
+    case 'variable':
+      return postVariable(route, request);
     default:
       throw new HttpError(404, 'Not Found');
   }

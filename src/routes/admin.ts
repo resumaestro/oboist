@@ -1,5 +1,5 @@
 import { createJsonResponse, HttpError, parseJsonValue } from '#/http';
-import { PutSecretsRoute, UpdateManifestRoute } from '#/types/routes';
+import { UpdateManifestRoute } from '#/types/routes';
 import { env } from "cloudflare:workers";
 
 const CLOUDFLARE_API_URL = 'https://api.cloudflare.com/client/v4';
@@ -44,43 +44,6 @@ type SlackManifestResult = {
 type SecretsStoreIdentifier = {
   id: string;
   name: string;
-}
-
-export async function postPutSecrets(
-  _route: PutSecretsRoute,
-  request: Request,
-): Promise<Response> {
-  const body = await parseJsonValue(request);
-
-  if (
-    typeof body !== 'object' ||
-    body === null ||
-    Array.isArray(body) ||
-    typeof (body as Record<string, unknown>)['secrets'] !== 'object' ||
-    (body as Record<string, unknown>)['secrets'] === null ||
-    Array.isArray((body as Record<string, unknown>)['secrets'])
-  ) {
-    throw new HttpError(400, 'Body must be { secrets: { KEY: VALUE, ... } }');
-  }
-
-  const secrets = (body as Record<string, unknown>)['secrets'] as Record<string, unknown>;
-  const results: Array<{ name: string; ok: boolean; error?: string }> = [];
-
-  for (const [name, value] of Object.entries(secrets)) {
-    if (typeof value !== 'string') {
-      results.push({ name, ok: false, error: 'value must be a string' });
-      continue;
-    }
-    try {
-      await patchSecretsStoreSecret(name, value);
-      results.push({ name, ok: true });
-    } catch (error) {
-      results.push({ name, ok: false, error: createErrorMessage(error) });
-    }
-  }
-
-  const allOk = results.every((r) => r.ok);
-  return createJsonResponse({ ok: allOk, results }, { status: allOk ? 200 : 207 });
 }
 
 export async function postUpdateManifest(

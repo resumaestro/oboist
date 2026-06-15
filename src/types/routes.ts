@@ -1,15 +1,10 @@
 import { Store } from '#/types/database';
-export type TokenRoute =
-  | {
-      action: 'token';
-      kind: 'secret';
-      name: string;
-    }
-  | {
-      action: 'token';
-      kind: 'variable';
-      name: string;
-    };
+export type TokenKind = 'secret' | 'variable';
+
+export type TokenRoute = {
+  action: 'token';
+  kind: TokenKind;
+};
 
 export type HealthRoute = {
   action: 'health';
@@ -41,10 +36,6 @@ export type UpdateManifestRoute = {
   action: 'updateManifest';
 };
 
-export type PutSecretsRoute = {
-  action: 'putSecrets';
-};
-
 export type Route =
   | HealthRoute
   | OperationRoute
@@ -52,5 +43,4 @@ export type Route =
   | ApplyRoute
   | StatusRoute
   | UpdateManifestRoute
-  | TokenRoute
-  | PutSecretsRoute;
+  | TokenRoute;
