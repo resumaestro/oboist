@@ -34,10 +34,11 @@ export async function postOperation(
       .split(';')
       .map((s) => s.trim())
       .filter((s) => s.length > 0);
-    const results = await selected.database.batch(
-      statements.map((s) => selected.database.prepare(s)),
-    );
-    output = results.at(-1) ?? { results: [], success: true, meta: {} } satisfies D1Result;
+    let lastResult: D1Result = { results: [], success: true, meta: {} };
+    for (const statement of statements) {
+      lastResult = await selected.database.prepare(statement).run();
+    }
+    output = lastResult;
   } else {
     output = await selected.database
       .prepare(operation.sql)
