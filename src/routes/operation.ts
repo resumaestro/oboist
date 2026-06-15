@@ -26,7 +26,7 @@ export async function postOperation(
     if (operation.parameters.length > 0) {
       throw new HttpError(400, 'params are not supported in exec mode');
     }
-    output = await selected.database.exec(operation.sql);
+    output = await selected.database.exec(operation.sql.replace(/\n/g, ' '));
   } else {
     output = await selected.database
       .prepare(operation.sql)
