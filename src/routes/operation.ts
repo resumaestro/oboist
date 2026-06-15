@@ -26,7 +26,11 @@ export async function postOperation(
     if (operation.parameters.length > 0) {
       throw new HttpError(400, 'params are not supported in exec mode');
     }
-    output = await selected.database.exec(operation.sql.replace(/\n/g, ' '));
+    const sql = operation.sql
+      .split('\n')
+      .filter((line) => !line.trimStart().startsWith('--'))
+      .join(' ');
+    output = await selected.database.exec(sql);
   } else {
     output = await selected.database
       .prepare(operation.sql)
