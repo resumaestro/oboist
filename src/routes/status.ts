@@ -1,6 +1,6 @@
-import { selectDatabase } from './database';
-import { createJsonResponse } from './http';
-import type { OboistEnvironment, Store } from './types';
+import { selectDatabase } from '#/database';
+import { createJsonResponse } from '#/http';
+import { StatusRoute } from '#/types/routes';
 
 type OperationStatus = {
   version: number;
@@ -13,23 +13,26 @@ type Status = {
   apply: OperationStatus;
 };
 
-type Kind = keyof Status;
-
 const NONE: OperationStatus = { version: 0, applied_at: null };
 
 export async function getStatus(
-  target: Store,
-  kind: Kind | null,
-  environment: OboistEnvironment,
+  route: StatusRoute,
+  _request: Request,
 ): Promise<Response> {
-  const { database } = selectDatabase(target, undefined, environment);
+  const { target, kind } = route;
+  const { database } = selectDatabase(target, undefined);
 
-  const result = await database
-    .prepare("SELECT kind, version, applied_at FROM schema_operations WHERE kind IN ('migration', 'seed', 'apply')")
-    .all() as D1Result<{ kind: string; version: number; applied_at: string }>;
+  const result = (await database
+    .prepare(
+      "SELECT kind, version, applied_at FROM schema_operations WHERE kind IN ('migration', 'seed', 'apply')",
+    )
+    .all()) as D1Result<{ kind: string; version: number; applied_at: string }>;
 
   const byKind: Record<string, OperationStatus> = Object.fromEntries(
-    result.results.map(r => [r.kind, { version: r.version, applied_at: r.applied_at }])
+    result.results.map((r) => [
+      r.kind,
+      { version: r.version, applied_at: r.applied_at },
+    ]),
   );
 
   if (kind !== null) {

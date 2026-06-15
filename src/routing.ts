@@ -1,53 +1,18 @@
-import { HttpError } from './http';
-import type { Store } from './types';
-import { STORES } from './types';
-import type { OboistEnvironment } from './types';
+import { HttpError } from '#/http';
+import type { Store } from '#/types/database';
+import { STORES } from '#/types/database';
+import type { Route, StatusRoute } from '#/types/routes';
 
-type HealthRoute = {
-  action: 'health';
-  target: string;
-};
 
-type OperationRoute = {
-  action: 'operation';
-  target: Store;
-};
+const isStore = (target?: string): target is Store =>
+  !!target && STORES.has(target as Store);
 
-type SnapshotRoute = {
-  action: 'snapshot';
-  target: Store;
-};
 
-type ApplyRoute = {
-  action: 'apply';
-  target: Store | null;
-};
-
-type StatusRoute = {
-  action: 'status';
-  target: Store;
-  kind: 'migration' | 'seed' | 'apply' | null;
-};
-
-type UpdateManifestRoute = {
-  action: 'updateManifest';
-};
-
-const isStore = (target: string): target is Store =>
-  STORES.has(target as Store);
-
-export type Route =
-  | HealthRoute
-  | OperationRoute
-  | SnapshotRoute
-  | ApplyRoute
-  | StatusRoute
-  | UpdateManifestRoute;
 const KINDS = new Set(['migration', 'apply', 'seed']);
+
 const handleStatus = (
   request: Request,
   target: string,
-  env: OboistEnvironment,
 ): StatusRoute => {
   if (!isStore(target)) {
     throw new HttpError(400, 'Unknown target');
@@ -64,9 +29,9 @@ const handleStatus = (
   };
 };
 
-export function parseRoute(request: Request, env: OboistEnvironment): Route {
+export function parseRoute(request: Request): Route {
   const pathname = new URL(request.url).pathname;
-  const [route, target] = pathname.split('/').filter(Boolean);
+  const [route, target, action] = pathname.split('/').filter(Boolean);
 
   switch (route) {
     case 'admin':
@@ -82,7 +47,7 @@ export function parseRoute(request: Request, env: OboistEnvironment): Route {
         target: null,
       };
     case 'status':
-      return handleStatus(request, target, env);
+      return handleStatus(request, target);
     case 'operation':
       if (!isStore(target)) {
         throw new HttpError(400, 'Unknown target');
@@ -99,7 +64,15 @@ export function parseRoute(request: Request, env: OboistEnvironment): Route {
         action: 'snapshot',
         target,
       };
-    default:
+    case 'token':
+      if (!isStore(target)) {
+        throw new HttpError(400, 'Unknown target');
+      }
+      return {
+        action: 'snapshot',
+        target,
+      };
+      default:
       throw new HttpError(404, 'Not found');
   }
 }

@@ -1,6 +1,6 @@
-import { selectDatabase } from './database';
-import { createJsonResponse, HttpError, parseJsonValue } from './http';
-import type { DatabaseEnvironment, Store } from './types';
+import { selectDatabase } from '#/database';
+import { createJsonResponse, HttpError, parseJsonValue } from '#/http';
+import { OperationRoute } from '#/types/routes';
 
 type OperationMode = 'query' | 'exec';
 type SqlParameter = string | number | null;
@@ -12,14 +12,14 @@ type OperationRequest = {
   sql: string;
 };
 
-export async function executeOperation(
-  target: Store,
+export async function postOperation(
+  route: OperationRoute,
   request: Request,
-  environment: DatabaseEnvironment,
 ): Promise<Response> {
+  const { target } = route;
   const value = await parseJsonValue(request);
   const operation = parseOperationRequest(value);
-  const selected = selectDatabase(target, operation.database, environment);
+  const selected = selectDatabase(target, operation.database);
   let output: D1Result<unknown> | D1ExecResult;
 
   if (operation.mode === 'exec') {

@@ -3,6 +3,7 @@
 interface __BaseEnv_Env {
 	PRODUCTION: D1Database;
 	SANDBOX: D1Database;
+	STAGING: D1Database;
 	SLACK_CONFIG_TOKEN: SecretsStoreSecret;
 	SLACK_CONFIG_REFRESH_TOKEN: SecretsStoreSecret;
 	CLOUDFLARE_ACCOUNT_ID: "281f6b8969eb59a0dec34daaafd69a29";

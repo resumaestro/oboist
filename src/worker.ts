@@ -1,20 +1,16 @@
-import { requireAuthorization } from './auth';
-import { updateSlackManifest } from './admin';
-import { executeApply } from './apply';
-import { createJsonResponse, HttpError } from './http';
-import { executeOperation } from './operations';
-import { parseRoute } from './routing';
-import { createSnapshotResponse } from './snapshots';
-import { getStatus } from './status';
-import type { OboistEnvironment } from './types';
+import { requireAuthorization } from '#/auth';
+import { createJsonResponse, HttpError } from '#/http';
+import { postUpdateManifest } from '#/routes/admin';
+import { postApply } from '#/routes/apply';
+import { postOperation } from '#/routes/operation';
+import { postSnapshot } from '#/routes/snapshot';
+import { getStatus } from '#/routes/status';
+import { postToken } from '#/routes/token';
+import { parseRoute } from '#/routing';
 
-async function handleRequest(
-  request: Request,
-  environment: OboistEnvironment,
-): Promise<Response> {
-  await requireAuthorization(request, environment.OBOIST_SECRET);
-
-  const route = parseRoute(request, environment);
+async function handleRequest(request: Request): Promise<Response> {
+  await requireAuthorization(request);
+  const route = parseRoute(request);
 
   switch (request.method) {
     case 'GET':
@@ -22,20 +18,22 @@ async function handleRequest(
         case 'health':
           return createJsonResponse({ ok: true });
         case 'status':
-          return getStatus(route.target, route.kind, environment);
+          return getStatus(route, request);
         default:
           throw new HttpError(404, 'Not found');
       }
     case 'POST':
       switch (route.action) {
         case 'operation':
-          return executeOperation(route.target, request, environment);
+          return postOperation(route, request);
         case 'apply':
-          return executeApply(request, environment);
+          return postApply(route, request);
         case 'snapshot':
-          return createSnapshotResponse(route.target, request, environment);
+          return postSnapshot(route, request);
         case 'updateManifest':
-          return updateSlackManifest(request, environment);
+          return postUpdateManifest(route, request);
+        case 'token':
+          return postToken(route, request);
         default:
           throw new HttpError(404, 'Not found');
       }
@@ -45,12 +43,9 @@ async function handleRequest(
 }
 
 export const worker = {
-  async fetch(
-    request: Request,
-    environment: OboistEnvironment,
-  ): Promise<Response> {
+  async fetch(request: Request): Promise<Response> {
     try {
-      return await handleRequest(request, environment);
+      return await handleRequest(request);
     } catch (error) {
       if (error instanceof HttpError) {
         return createJsonResponse(
@@ -69,6 +64,6 @@ export const worker = {
       );
     }
   },
-} satisfies ExportedHandler<OboistEnvironment>;
+  } satisfies ExportedHandler<Env>;
 
 export default worker;

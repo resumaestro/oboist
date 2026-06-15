@@ -1,5 +1,6 @@
-import { createJsonResponse, HttpError, parseJsonValue } from './http';
-import type { OboistEnvironment } from './types';
+import { createJsonResponse, HttpError, parseJsonValue } from '#/http';
+import { UpdateManifestRoute } from '#/types/routes';
+import { env } from "cloudflare:workers";
 
 const CLOUDFLARE_API_URL = 'https://api.cloudflare.com/client/v4';
 const SLACK_API_URL = 'https://slack.com/api';
@@ -12,15 +13,6 @@ const EXPIRED_SLACK_ERRORS = new Set([
   'token_expired',
 ]);
 
-type AdminEnvironment = Pick<
-  OboistEnvironment,
-  | 'CLOUDFLARE_ACCOUNT_ID'
-  | 'CLOUDFLARE_TOKEN'
-  | 'SECRETS_STORE_ID'
-  | 'SLACK_APP_ID'
-  | 'SLACK_CONFIG_REFRESH_TOKEN'
-  | 'SLACK_CONFIG_TOKEN'
->
 
 type SlackRequestOptions = {
   bearer?: string;
@@ -54,18 +46,17 @@ type SecretsStoreIdentifier = {
   name: string;
 }
 
-export async function updateSlackManifest(
-  request: Request,
-  environment: AdminEnvironment,
+export async function postUpdateManifest(
+  route: UpdateManifestRoute,
+  request: Request
 ): Promise<Response> {
   const manifestRequest = parseManifestRequest(
     await parseJsonValue(request),
-    environment,
   );
 
   try {
-    const accessToken = await environment.SLACK_CONFIG_TOKEN.get();
-    const refreshToken = await environment.SLACK_CONFIG_REFRESH_TOKEN.get();
+    const accessToken = await env.SLACK_CONFIG_TOKEN.get();
+    const refreshToken = await env.SLACK_CONFIG_REFRESH_TOKEN.get();
     let manifestResult = await requestSlackManifestUpdate(
       manifestRequest,
       accessToken,
@@ -87,7 +78,7 @@ export async function updateSlackManifest(
     const writeBack =
       rotatedTokens === undefined
         ? undefined
-        : await persistSlackConfigTokens(environment, rotatedTokens);
+        : await persistSlackConfigTokens(rotatedTokens);
 
     return createManifestResponse(
       manifestRequest,
@@ -108,7 +99,6 @@ export async function updateSlackManifest(
 
 function parseManifestRequest(
   value: unknown,
-  environment: Pick<AdminEnvironment, 'SLACK_APP_ID'>,
 ): ManifestRequest {
   const manifestProperty = readOptionalProperty(value, 'manifest');
   const manifestValue =
@@ -122,7 +112,7 @@ function parseManifestRequest(
   const appId =
     typeof appIdProperty === 'string' && appIdProperty.trim().length > 0
       ? appIdProperty
-      : environment.SLACK_APP_ID;
+      : env.SLACK_APP_ID;
 
   if (!appId) {
     throw new HttpError(
@@ -235,17 +225,14 @@ async function requestSlackApi(
 }
 
 async function persistSlackConfigTokens(
-  environment: AdminEnvironment,
   tokens: SlackConfigTokenPair,
 ): Promise<TokenWriteBack> {
   try {
     await patchSecretsStoreSecret(
-      environment,
       SLACK_CONFIG_TOKEN_NAME,
       tokens.token,
     );
     await patchSecretsStoreSecret(
-      environment,
       SLACK_CONFIG_REFRESH_TOKEN_NAME,
       tokens.refreshToken,
     );
@@ -259,15 +246,14 @@ async function persistSlackConfigTokens(
 }
 
 async function patchSecretsStoreSecret(
-  environment: AdminEnvironment,
   name: string,
   value: string,
 ): Promise<void> {
   const baseUrl =
-    `${CLOUDFLARE_API_URL}/accounts/${environment.CLOUDFLARE_ACCOUNT_ID}` +
-    `/secrets_store/stores/${environment.SECRETS_STORE_ID}/secrets`;
+    `${CLOUDFLARE_API_URL}/accounts/${env.CLOUDFLARE_ACCOUNT_ID}` +
+    `/secrets_store/stores/${env.SECRETS_STORE_ID}/secrets`;
   const headers = new Headers({
-    authorization: `Bearer ${environment.CLOUDFLARE_TOKEN}`,
+    authorization: `Bearer ${env.CLOUDFLARE_TOKEN}`,
     'content-type': 'application/json',
   });
   const listResponse = await fetch(`${baseUrl}?per_page=100`, { headers });

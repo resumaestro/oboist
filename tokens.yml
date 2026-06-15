@@ -1,5 +1,6 @@
 cloudflare:
   scope:
+    - API Tokens Read
     - Workers Scripts Write
     - D1 Write
     - Secrets Store Write

@@ -1,10 +1,11 @@
-import { HttpError } from './http';
-import type { DatabaseEnvironment, DatabaseSelection, Store } from './types';
+import { HttpError } from '#/http';
+import type { DatabaseSelection, Store } from '#/types/database';
+import { env } from "cloudflare:workers";
+
 
 export function selectDatabase(
   routeTarget: Store,
   requested: string | undefined,
-  environment: DatabaseEnvironment,
 ): DatabaseSelection {
   const value = requested === undefined ? routeTarget : requested;
 
@@ -12,21 +13,21 @@ export function selectDatabase(
     case 'resumaestro-pipeline':
     case 'production':
       return {
-        database: environment.PRODUCTION,
+        database: env.PRODUCTION,
         name: 'resumaestro-pipeline',
         target: 'PRODUCTION',
       };
     case 'resumaestro-pipeline-sandbox':
     case 'sandbox':
       return {
-        database: environment.SANDBOX,
+        database: env.SANDBOX,
         name: 'resumaestro-pipeline-sandbox',
         target: 'SANDBOX',
       };
     case 'resumaestro-pipeline-staging':
     case 'staging':
       return {
-        database: environment.STAGING,
+        database: env.STAGING,
         name: 'resumaestro-pipeline-staging',
         target: 'STAGING',
       };

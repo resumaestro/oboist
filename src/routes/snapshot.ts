@@ -1,51 +1,44 @@
-import { createResponseInit } from "#/headers";
-import { selectDatabase } from "./database";
-import { HttpError, parseOptionalJsonValue } from "./http";
-import type {
-  DatabaseClient,
-  DatabaseEnvironment,
-  DatabaseSelection,
-  Store,
-} from "./types";
+import { selectDatabase } from '#/database';
+import { createResponseInit } from '#/headers';
+import { HttpError, parseOptionalJsonValue } from '#/http';
+import { DatabaseSelection } from '#/types/database';
+import { SnapshotRoute } from '#/types/routes';
+import type { DatabaseClient } from 'cloudflare:workers';
 
 const SNAPSHOT_PAGE_SIZE = 500;
 
 type SchemaRow = {
-  type: "index" | "table" | "trigger" | "view";
+  type: 'index' | 'table' | 'trigger' | 'view';
   name: string;
   sql: string;
-}
+};
 
 type ColumnRow = {
   columnId: number;
   name: string;
   hidden: number;
   primaryKey: number;
-}
+};
 
-export async function createSnapshotResponse(
-  target: Store,
+export async function postSnapshot(
+  route: SnapshotRoute,
   request: Request,
-  environment: DatabaseEnvironment,
 ): Promise<Response> {
+  const { target } = route;
   const value = await parseOptionalJsonValue(request);
-  const selected = selectDatabase(
-    target,
-    parseSnapshotDatabase(value),
-    environment,
-  );
+  const selected = selectDatabase(target, parseSnapshotDatabase(value));
   const schema = await readSchema(selected.database);
   const snapshot = createSnapshotStream(selected, schema);
-  const responseInit = createResponseInit("html");
+  const responseInit = createResponseInit('html');
   const headers = new Headers(responseInit.headers);
 
   headers.set(
-    "content-disposition",
+    'content-disposition',
     `attachment; filename="${selected.name}.sql"`,
   );
-  headers.set("content-type", "application/sql; charset=utf-8");
-  headers.set("x-oboist-database", selected.name);
-  headers.set("x-oboist-target", selected.target);
+  headers.set('content-type', 'application/sql; charset=utf-8');
+  headers.set('x-oboist-database', selected.name);
+  headers.set('x-oboist-target', selected.target);
   responseInit.headers = headers;
 
   return new Response(snapshot, responseInit);
@@ -56,13 +49,13 @@ function parseSnapshotDatabase(value: unknown): string | undefined {
     return undefined;
   }
 
-  const database = readProperty(value, "database", "Snapshot body");
+  const database = readProperty(value, 'database', 'Snapshot body');
   if (database === undefined) {
     return undefined;
   }
 
-  if (typeof database !== "string" || database.trim().length === 0) {
-    throw new HttpError(400, "database must be a non-empty string");
+  if (typeof database !== 'string' || database.trim().length === 0) {
+    throw new HttpError(400, 'database must be a non-empty string');
   }
 
   return database;
@@ -98,28 +91,29 @@ function createSnapshotStream(
 
   return new ReadableStream<Uint8Array>({
     async start(controller) {
-      const write = (value: string) => controller.enqueue(encoder.encode(value));
+      const write = (value: string) =>
+        controller.enqueue(encoder.encode(value));
 
       try {
         write(`-- oboist snapshot: ${selected.name}\n`);
-        write("PRAGMA foreign_keys=OFF;\n");
-        write("BEGIN TRANSACTION;\n\n");
+        write('PRAGMA foreign_keys=OFF;\n');
+        write('BEGIN TRANSACTION;\n\n');
 
-        const tables = schema.filter((entry) => entry.type === "table");
-        const deferred = schema.filter((entry) => entry.type !== "table");
+        const tables = schema.filter((entry) => entry.type === 'table');
+        const deferred = schema.filter((entry) => entry.type !== 'table');
 
         for (const table of tables) {
           write(`${terminateStatement(table.sql)}\n`);
           await writeTableRows(selected.database, table, write);
-          write("\n");
+          write('\n');
         }
 
         for (const entry of deferred) {
           write(`${terminateStatement(entry.sql)}\n`);
         }
 
-        write("\nCOMMIT;\n");
-        write("PRAGMA foreign_keys=ON;\n");
+        write('\nCOMMIT;\n');
+        write('PRAGMA foreign_keys=ON;\n');
         controller.close();
       } catch (error) {
         controller.error(error);
@@ -150,10 +144,10 @@ async function writeTableRows(
     .sort((left, right) => left.primaryKey - right.primaryKey)
     .map((column) => quoteIdentifier(column.name));
   const orderBy =
-    primaryKey.length > 0 ? primaryKey.join(", ") : quoteIdentifier("rowid");
+    primaryKey.length > 0 ? primaryKey.join(', ') : quoteIdentifier('rowid');
   const columnList = columns
     .map((column) => quoteIdentifier(column.name))
-    .join(", ");
+    .join(', ');
   let offset = 0;
 
   while (true) {
@@ -170,9 +164,9 @@ async function writeTableRows(
     for (const row of rows.results) {
       const values = columns
         .map((column) =>
-          createSqlLiteral(readProperty(row, column.name, "Snapshot row")),
+          createSqlLiteral(readProperty(row, column.name, 'Snapshot row')),
         )
-        .join(", ");
+        .join(', ');
       write(
         `INSERT INTO ${quoteIdentifier(table.name)} (${columnList}) VALUES (${values});\n`,
       );
@@ -188,7 +182,7 @@ async function writeTableRows(
 
 function terminateStatement(sql: string): string {
   const trimmed = sql.trimEnd();
-  return trimmed.endsWith(";") ? trimmed : `${trimmed};`;
+  return trimmed.endsWith(';') ? trimmed : `${trimmed};`;
 }
 
 function quoteIdentifier(identifier: string): string {
@@ -197,14 +191,14 @@ function quoteIdentifier(identifier: string): string {
 
 function createSqlLiteral(value: unknown): string {
   if (value === null || value === undefined) {
-    return "NULL";
+    return 'NULL';
   }
 
-  if (typeof value === "number") {
+  if (typeof value === 'number') {
     return String(value);
   }
 
-  if (typeof value === "string") {
+  if (typeof value === 'string') {
     return `'${value.replaceAll("'", "''")}'`;
   }
 
@@ -215,44 +209,44 @@ function createSqlLiteral(value: unknown): string {
         ? new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
         : null;
   if (!bytes) {
-    throw new Error("Snapshot contains an unsupported D1 value");
+    throw new Error('Snapshot contains an unsupported D1 value');
   }
 
-  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
-    "",
-  );
+  const hex = Array.from(bytes, (byte) =>
+    byte.toString(16).padStart(2, '0'),
+  ).join('');
   return `X'${hex}'`;
 }
 
 function parseSchemaRow(value: unknown): SchemaRow {
-  const type = readProperty(value, "type", "D1 schema row");
-  const name = readProperty(value, "name", "D1 schema row");
-  const sql = readProperty(value, "sql", "D1 schema row");
+  const type = readProperty(value, 'type', 'D1 schema row');
+  const name = readProperty(value, 'name', 'D1 schema row');
+  const sql = readProperty(value, 'sql', 'D1 schema row');
 
   if (!isSchemaType(type)) {
-    throw new Error("D1 returned an unsupported schema type");
+    throw new Error('D1 returned an unsupported schema type');
   }
 
-  if (typeof name !== "string" || typeof sql !== "string") {
-    throw new Error("D1 returned an invalid schema row");
+  if (typeof name !== 'string' || typeof sql !== 'string') {
+    throw new Error('D1 returned an invalid schema row');
   }
 
   return { name, sql, type };
 }
 
 function parseColumnRow(value: unknown): ColumnRow {
-  const columnId = readProperty(value, "cid", "D1 column row");
-  const hidden = readProperty(value, "hidden", "D1 column row");
-  const name = readProperty(value, "name", "D1 column row");
-  const primaryKey = readProperty(value, "pk", "D1 column row");
+  const columnId = readProperty(value, 'cid', 'D1 column row');
+  const hidden = readProperty(value, 'hidden', 'D1 column row');
+  const name = readProperty(value, 'name', 'D1 column row');
+  const primaryKey = readProperty(value, 'pk', 'D1 column row');
 
   if (
-    typeof columnId !== "number" ||
-    typeof hidden !== "number" ||
-    typeof name !== "string" ||
-    typeof primaryKey !== "number"
+    typeof columnId !== 'number' ||
+    typeof hidden !== 'number' ||
+    typeof name !== 'string' ||
+    typeof primaryKey !== 'number'
   ) {
-    throw new Error("D1 returned an invalid column row");
+    throw new Error('D1 returned an invalid column row');
   }
 
   return {
@@ -263,12 +257,12 @@ function parseColumnRow(value: unknown): ColumnRow {
   };
 }
 
-function isSchemaType(value: unknown): value is SchemaRow["type"] {
+function isSchemaType(value: unknown): value is SchemaRow['type'] {
   return (
-    value === "index" ||
-    value === "table" ||
-    value === "trigger" ||
-    value === "view"
+    value === 'index' ||
+    value === 'table' ||
+    value === 'trigger' ||
+    value === 'view'
   );
 }
 
@@ -277,7 +271,7 @@ function readProperty(
   property: string,
   context: string,
 ): unknown {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     throw new Error(`${context} must be an object`);
   }
 
