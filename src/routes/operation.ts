@@ -20,17 +20,13 @@ export async function postOperation(
   const value = await parseJsonValue(request);
   const operation = parseOperationRequest(value);
   const selected = selectDatabase(target, operation.database);
-  let output: D1Result<unknown> | D1ExecResult;
+  let output: D1Result<unknown>;
 
   if (operation.mode === 'exec') {
     if (operation.parameters.length > 0) {
       throw new HttpError(400, 'params are not supported in exec mode');
     }
-    const sql = operation.sql
-      .split('\n')
-      .map((line) => line.replace(/--.*$/, ''))
-      .join(' ');
-    output = await selected.database.exec(sql);
+    output = await selected.database.prepare(operation.sql).run();
   } else {
     output = await selected.database
       .prepare(operation.sql)
