@@ -9,7 +9,7 @@ export function selectDatabase(
 ): DatabaseSelection {
   const value = requested === undefined ? routeTarget : requested;
 
-  switch (value) {
+  switch (value.toLowerCase()) {
     case 'resumaestro-pipeline':
     case 'production':
       return {
