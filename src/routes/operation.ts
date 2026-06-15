@@ -29,8 +29,7 @@ export async function postOperation(
     const sql = operation.sql
       .split('\n')
       .map((line) => line.replace(/--.*$/, ''))
-      .filter((line) => line.trim().length > 0)
-      .join('\n');
+      .join(' ');
     output = await selected.database.exec(sql);
   } else {
     output = await selected.database
