@@ -26,11 +26,18 @@ export async function postOperation(
     if (operation.parameters.length > 0) {
       throw new HttpError(400, 'params are not supported in exec mode');
     }
-    const sql = operation.sql
+    const stripped = operation.sql
       .split('\n')
       .map((line) => line.replace(/--.*$/, ''))
       .join(' ');
-    output = await selected.database.exec(sql);
+    const statements = stripped
+      .split(';')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    const results = await selected.database.batch(
+      statements.map((s) => selected.database.prepare(s)),
+    );
+    output = results.at(-1) ?? { results: [], success: true, meta: {} } satisfies D1Result;
   } else {
     output = await selected.database
       .prepare(operation.sql)
