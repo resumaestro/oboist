@@ -36,7 +36,6 @@ binding = "STAGING"
 database_name = "resumaestro-pipeline-staging"
 database_id = "7461b3de-4ddb-4135-a662-27ad4edac793"
 
-
 [[d1_databases]]
 binding = "SANDBOX"
 database_name = "resumaestro-pipeline-sandbox"

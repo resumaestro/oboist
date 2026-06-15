@@ -41,8 +41,12 @@ export type UpdateManifestRoute = {
   action: 'updateManifest';
 };
 
-export type PutSecretsRoute = {
-  action: 'putSecrets';
+export type UpdateSecretsRoute = {
+  action: 'updateSecrets';
+};
+
+export type ReadSecretsRoute = {
+  action: 'readSecrets';
 };
 
 export type Route =
@@ -53,4 +57,5 @@ export type Route =
   | StatusRoute
   | UpdateManifestRoute
   | TokenRoute
-  | PutSecretsRoute;
+  | UpdateSecretsRoute
+  | ReadSecretsRoute;

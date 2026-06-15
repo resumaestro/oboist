@@ -1,11 +1,14 @@
 import { createJsonResponse, HttpError, parseJsonValue } from '#/http';
-import { PutSecretsRoute, UpdateManifestRoute } from '#/types/routes';
+import { ReadSecretsRoute, UpdateManifestRoute, UpdateSecretsRoute } from '#/types/routes';
 import { env } from "cloudflare:workers";
 
 const CLOUDFLARE_API_URL = 'https://api.cloudflare.com/client/v4';
 const SLACK_API_URL = 'https://slack.com/api';
 const SLACK_CONFIG_TOKEN_NAME = 'SLACK_CONFIG_TOKEN';
 const SLACK_CONFIG_REFRESH_TOKEN_NAME = 'SLACK_CONFIG_REFRESH_TOKEN';
+
+const KV_WORKER_PREFIX = 'secrets:';
+const KV_KEY_PREFIX = 'secrets:key:';
 
 const EXPIRED_SLACK_ERRORS = new Set([
   'invalid_auth',
@@ -46,8 +49,11 @@ type SecretsStoreIdentifier = {
   name: string;
 }
 
-export async function postPutSecrets(
-  _route: PutSecretsRoute,
+// POST /pit-boss/secrets/update
+// Called from `pit-boss secrets`. Writes new/changed secrets to the store
+// and fans out updated values to every worker that registered for each key.
+export async function postUpdateSecrets(
+  _route: UpdateSecretsRoute,
   request: Request,
 ): Promise<Response> {
   const body = await parseJsonValue(request);
@@ -63,24 +69,131 @@ export async function postPutSecrets(
     throw new HttpError(400, 'Body must be { secrets: { KEY: VALUE, ... } }');
   }
 
-  const secrets = (body as Record<string, unknown>)['secrets'] as Record<string, unknown>;
-  const results: Array<{ name: string; ok: boolean; error?: string }> = [];
+  const secrets = (body as Record<string, unknown>)['secrets'] as Record<string, string>;
+  const results: Array<{ name: string; ok: boolean; updated: boolean; error?: string }> = [];
 
   for (const [name, value] of Object.entries(secrets)) {
     if (typeof value !== 'string') {
-      results.push({ name, ok: false, error: 'value must be a string' });
+      results.push({ name, ok: false, updated: false, error: 'value must be a string' });
       continue;
     }
+
     try {
-      await patchSecretsStoreSecret(name, value);
-      results.push({ name, ok: true });
+      const currentValue = await getSecretsStoreSecretValue(name);
+      const changed = currentValue !== value;
+
+      if (changed) {
+        await patchSecretsStoreSecret(name, value);
+        await fanOutSecretToWorkers(name, value);
+      }
+
+      results.push({ name, ok: true, updated: changed });
     } catch (error) {
-      results.push({ name, ok: false, error: createErrorMessage(error) });
+      results.push({ name, ok: false, updated: false, error: createErrorMessage(error) });
     }
   }
 
   const allOk = results.every((r) => r.ok);
   return createJsonResponse({ ok: allOk, results }, { status: allOk ? 200 : 207 });
+}
+
+// POST /pit-boss/secrets/read
+// Called from pit-boss deploy actions. Worker declares what secrets it needs.
+// Diffs against the stored list, writes/removes secrets on the worker,
+// and updates both KV indexes.
+export async function postReadSecrets(
+  _route: ReadSecretsRoute,
+  request: Request,
+): Promise<Response> {
+  const body = await parseJsonValue(request);
+
+  if (
+    typeof body !== 'object' ||
+    body === null ||
+    Array.isArray(body) ||
+    typeof (body as Record<string, unknown>)['worker'] !== 'string' ||
+    !Array.isArray((body as Record<string, unknown>)['secrets'])
+  ) {
+    throw new HttpError(400, 'Body must be { worker: string, secrets: string[] }');
+  }
+
+  const bodyObj = body as Record<string, unknown>;
+  const worker = bodyObj['worker'] as string;
+  const requestedKeys = bodyObj['secrets'] as string[];
+
+  if (worker.trim() === '') {
+    throw new HttpError(400, 'worker must be a non-empty string');
+  }
+
+  const workerKvKey = `${KV_WORKER_PREFIX}${worker}`;
+  const previousRaw = await env.RESUMAESTRO_CONFIG.get(workerKvKey);
+  const previousKeys: string[] = previousRaw ? JSON.parse(previousRaw) : [];
+
+  const requestedSet = new Set(requestedKeys);
+  const previousSet = new Set(previousKeys);
+  const additions = requestedKeys.filter((k) => !previousSet.has(k));
+  const removals = previousKeys.filter((k) => !requestedSet.has(k));
+
+  const secretValues: Record<string, string> = {};
+  for (const key of requestedKeys) {
+    try {
+      secretValues[key] = await getSecretsStoreSecretValue(key);
+    } catch {
+      // secret not in store yet; skip fan-out for this key
+    }
+  }
+
+  // Put additions and current values to the worker
+  const putResults: Array<{ name: string; ok: boolean; error?: string }> = [];
+  for (const key of additions) {
+    if (secretValues[key] === undefined) continue;
+    try {
+      await putWorkerSecret(worker, key, secretValues[key]);
+      putResults.push({ name: key, ok: true });
+    } catch (error) {
+      putResults.push({ name: key, ok: false, error: createErrorMessage(error) });
+    }
+  }
+
+  // Delete removals from the worker
+  const deleteResults: Array<{ name: string; ok: boolean; error?: string }> = [];
+  for (const key of removals) {
+    try {
+      await deleteWorkerSecret(worker, key);
+      deleteResults.push({ name: key, ok: true });
+    } catch (error) {
+      deleteResults.push({ name: key, ok: false, error: createErrorMessage(error) });
+    }
+  }
+
+  // Update secrets:WORKER_NAME
+  await env.RESUMAESTRO_CONFIG.put(workerKvKey, JSON.stringify(requestedKeys));
+
+  // Update secrets:key:KEY indexes — remove worker from dropped keys
+  for (const key of removals) {
+    const keyKvKey = `${KV_KEY_PREFIX}${key}`;
+    const raw = await env.RESUMAESTRO_CONFIG.get(keyKvKey);
+    const workers: string[] = raw ? JSON.parse(raw) : [];
+    const updated = workers.filter((w) => w !== worker);
+    await env.RESUMAESTRO_CONFIG.put(keyKvKey, JSON.stringify(updated));
+  }
+
+  // Update secrets:key:KEY indexes — add worker to new keys
+  for (const key of additions) {
+    const keyKvKey = `${KV_KEY_PREFIX}${key}`;
+    const raw = await env.RESUMAESTRO_CONFIG.get(keyKvKey);
+    const workers: string[] = raw ? JSON.parse(raw) : [];
+    if (!workers.includes(worker)) {
+      workers.push(worker);
+      await env.RESUMAESTRO_CONFIG.put(keyKvKey, JSON.stringify(workers));
+    }
+  }
+
+  return createJsonResponse({
+    ok: true,
+    additions: putResults,
+    removals: deleteResults,
+  });
 }
 
 export async function postUpdateManifest(
@@ -282,6 +395,23 @@ async function persistSlackConfigTokens(
   }
 }
 
+async function getSecretsStoreSecretValue(name: string): Promise<string> {
+  const baseUrl =
+    `${CLOUDFLARE_API_URL}/accounts/${env.CLOUDFLARE_ACCOUNT_ID}` +
+    `/secrets_store/stores/${env.SECRETS_STORE_ID}/secrets`;
+  const headers = new Headers({
+    authorization: `Bearer ${env.CLOUDFLARE_TOKEN}`,
+  });
+  const listResponse = await fetch(`${baseUrl}?per_page=100`, { headers });
+  const identifier = findSecretsStoreIdentifier(await listResponse.json(), name);
+
+  const getResponse = await fetch(`${baseUrl}/${identifier.id}/value`, { headers });
+  if (!getResponse.ok) {
+    throw new Error(`get secret value ${name} failed: ${getResponse.status}`);
+  }
+  return getResponse.text();
+}
+
 async function patchSecretsStoreSecret(
   name: string,
   value: string,
@@ -312,6 +442,46 @@ async function patchSecretsStoreSecret(
     throw new Error(
       `patch ${name} failed: ${JSON.stringify(readOptionalProperty(patchResult, 'errors'))}`,
     );
+  }
+}
+
+async function fanOutSecretToWorkers(name: string, value: string): Promise<void> {
+  const keyKvKey = `${KV_KEY_PREFIX}${name}`;
+  const raw = await env.RESUMAESTRO_CONFIG.get(keyKvKey);
+  if (!raw) return;
+
+  const workers: string[] = JSON.parse(raw);
+  await Promise.all(workers.map((worker) => putWorkerSecret(worker, name, value)));
+}
+
+async function putWorkerSecret(worker: string, name: string, value: string): Promise<void> {
+  const url =
+    `${CLOUDFLARE_API_URL}/accounts/${env.CLOUDFLARE_ACCOUNT_ID}` +
+    `/workers/scripts/${worker}/secrets`;
+  const headers = new Headers({
+    authorization: `Bearer ${env.CLOUDFLARE_TOKEN}`,
+    'content-type': 'application/json',
+  });
+  const response = await fetch(url, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify({ name, text: value }),
+  });
+  if (!response.ok) {
+    throw new Error(`put secret ${name} to worker ${worker} failed: ${response.status}`);
+  }
+}
+
+async function deleteWorkerSecret(worker: string, name: string): Promise<void> {
+  const url =
+    `${CLOUDFLARE_API_URL}/accounts/${env.CLOUDFLARE_ACCOUNT_ID}` +
+    `/workers/scripts/${worker}/secrets/${name}`;
+  const headers = new Headers({
+    authorization: `Bearer ${env.CLOUDFLARE_TOKEN}`,
+  });
+  const response = await fetch(url, { method: 'DELETE', headers });
+  if (!response.ok && response.status !== 404) {
+    throw new Error(`delete secret ${name} from worker ${worker} failed: ${response.status}`);
   }
 }
 

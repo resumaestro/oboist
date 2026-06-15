@@ -1,4 +1,4 @@
-name: Provision (PR dry-run)
+name: Provision Sandbox (dry-run)
 
 on:
   pull_request:
@@ -14,21 +14,24 @@ permissions:
 jobs:
   dry-run:
     runs-on: ubuntu-latest
-    environment: sandbox-lock
+    concurrency:
+      group: provision-SANDBOX
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Protect provision files
-        uses: resumaestro/pit-boss/actions/protect@main
+        uses: resumaestro/pit-boss/actions/provision/protect@main
         with:
+          target: SANDBOX
           proxy_url: ${{ vars.OBOIST_URL }}
           proxy_token: ${{ secrets.OBOIST_SECRET }}
 
       - name: Dry-run
         id: dry-run
-        uses: resumaestro/pit-boss/actions/dry-run@main
+        uses: resumaestro/pit-boss/actions/provision/dry-run@main
         with:
           target: SANDBOX
           proxy_url: ${{ vars.OBOIST_URL }}

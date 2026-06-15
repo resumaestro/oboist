@@ -1,6 +1,6 @@
 import { requireAuthorization } from '#/auth';
 import { createJsonResponse, HttpError } from '#/http';
-import { postPutSecrets, postUpdateManifest } from '#/routes/admin';
+import { postReadSecrets, postUpdateManifest, postUpdateSecrets } from '#/routes/admin';
 import { postApply } from '#/routes/apply';
 import { postOperation } from '#/routes/operation';
 import { postSnapshot } from '#/routes/snapshot';
@@ -34,8 +34,10 @@ async function handleRequest(request: Request): Promise<Response> {
           return postSnapshot(route, request);
         case 'updateManifest':
           return postUpdateManifest(route, request);
-        case 'putSecrets':
-          return postPutSecrets(route, request);
+        case 'updateSecrets':
+          return postUpdateSecrets(route, request);
+        case 'readSecrets':
+          return postReadSecrets(route, request);
         default:
           throw new HttpError(404, 'Not found');
       }

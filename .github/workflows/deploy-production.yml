@@ -1,9 +1,7 @@
-name: Provision
+name: Deploy
 
 on:
   push:
-    branches: [main]
-  merge_group:
     branches: [main]
   workflow_dispatch: {}
 
@@ -12,27 +10,38 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: provision
+  group: deploy
   cancel-in-progress: false
 
 jobs:
+  read-tokens:
+    name: Read tokens.yml
+    runs-on: ubuntu-latest
+    outputs:
+      secret_keys: ${{ steps.read.outputs.secret_keys }}
+      variable_keys: ${{ steps.read.outputs.variable_keys }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: read
+        uses: resumaestro/pit-boss/actions/tokens/read@main
+
   provision-staging:
     name: Provision (staging)
     runs-on: ubuntu-latest
-    environment: sandbox-lock
+    concurrency:
+      group: provision-STAGING
+      cancel-in-progress: false
     outputs:
       passed: ${{ steps.provision.outputs.passed }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - name: Provision staging
         id: provision
-        uses: resumaestro/pit-boss/actions/provision@main
+        uses: resumaestro/pit-boss/actions/provision/database@main
         with:
           target: STAGING
-          is_production: "false"
           provision_dir: provision/pipeline
           proxy_url: ${{ vars.OBOIST_URL }}
           proxy_token: ${{ secrets.OBOIST_SECRET }}
@@ -41,20 +50,20 @@ jobs:
     name: Provision (production)
     needs: provision-staging
     runs-on: ubuntu-latest
-    environment: sandbox-lock
+    concurrency:
+      group: provision-PRODUCTION
+      cancel-in-progress: false
     outputs:
       passed: ${{ steps.provision.outputs.passed }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - name: Provision production
         id: provision
-        uses: resumaestro/pit-boss/actions/provision@main
+        uses: resumaestro/pit-boss/actions/provision/database@main
         with:
           target: PRODUCTION
-          is_production: "true"
           provision_dir: provision/pipeline
           proxy_url: ${{ vars.OBOIST_URL }}
           proxy_token: ${{ secrets.OBOIST_SECRET }}
@@ -65,14 +74,12 @@ jobs:
     if: |
       always() &&
       failure() &&
-      github.event_name != 'merge_group' &&
       (needs.provision-staging.result == 'failure' || needs.provision-production.result == 'failure')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - name: Open revert PR
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -87,7 +94,7 @@ jobs:
           git push origin "$BRANCH"
 
           gh pr create \
-            --repo resumaestro/resumaestro \
+            --repo resumaestro/oboist \
             --title "Revert: provision failed (${{ github.sha }})" \
             --body "$(cat <<'EOF'
           ## Automated revert
@@ -101,3 +108,46 @@ jobs:
           )" \
             --base main \
             --head "$BRANCH"
+
+  apply:
+    name: Apply
+    needs: provision-production
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply
+        uses: resumaestro/pit-boss/actions/provision/apply@main
+        with:
+          provision_dir: provision/kv
+          target: RESUMAESTRO_CONFIG
+          proxy_url: ${{ vars.OBOIST_URL }}
+          proxy_token: ${{ secrets.OBOIST_SECRET }}
+
+  secrets-sync:
+    name: Sync secrets
+    needs: [read-tokens, apply]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: resumaestro/pit-boss/actions/secrets/sync@main
+        with:
+          worker: resumaestro-oboist
+          secret_keys: ${{ needs.read-tokens.outputs.secret_keys }}
+          proxy_url: ${{ vars.OBOIST_URL }}
+          proxy_token: ${{ secrets.OBOIST_SECRET }}
+
+  deploy:
+    name: Deploy
+    needs: [read-tokens, secrets-sync]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - uses: resumaestro/pit-boss/actions/deploy@main
+        with:
+          variable_keys: ${{ needs.read-tokens.outputs.variable_keys }}
+          proxy_url: ${{ vars.OBOIST_URL }}
+          proxy_token: ${{ secrets.OBOIST_SECRET }}

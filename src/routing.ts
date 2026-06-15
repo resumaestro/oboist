@@ -41,9 +41,14 @@ export function parseRoute(request: Request): Route {
             action: 'updateManifest',
           };
         case 'secrets':
-          return {
-            action: 'putSecrets',
-          };
+          switch (action) {
+            case 'push':
+              return { action: 'updateSecrets' };
+            case 'sync':
+              return { action: 'readSecrets' };
+            default:
+              throw new HttpError(404, 'Not found');
+          }
         case 'token': {
           const params = new URL(request.url).searchParams;
           const kind = params.get('kind');
