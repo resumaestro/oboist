@@ -34,12 +34,28 @@ export function parseRoute(request: Request): Route {
   const [route, target, action] = pathname.split('/').filter(Boolean);
 
   switch (route) {
-    case 'admin':
+    case 'pit-boss':
       switch (target) {
         case 'update-manifest':
           return {
             action: 'updateManifest',
           };
+        case 'secrets':
+          return {
+            action: 'putSecrets',
+          };
+        case 'token': {
+          const params = new URL(request.url).searchParams;
+          const kind = params.get('kind');
+          if (kind === 'secret' || kind === 'variable') {
+            const name = params.get('name');
+            if (!name) {
+              throw new HttpError(400, 'name is required');
+            }
+            return { action: 'token', kind, name };
+          }
+          throw new HttpError(400, 'kind must be "secret" or "variable"');
+        }
         default:
           throw new HttpError(404, 'Not found');
       }
@@ -66,17 +82,7 @@ export function parseRoute(request: Request): Route {
         action: 'snapshot',
         target,
       };
-    case 'token': {
-      const kind = new URL(request.url).searchParams.get('kind');
-      if (kind !== 'secret' && kind !== 'variable') {
-        throw new HttpError(400, 'kind must be "secret" or "variable"');
-      }
-      return {
-        action: 'token',
-        kind,
-      };
-    }
-      default:
+    default:
       throw new HttpError(404, 'Not found');
   }
 }

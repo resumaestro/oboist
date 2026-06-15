@@ -1,0 +1,7 @@
+{
+  "variable:CLOUDFLARE_ACCOUNT_ID": "281f6b8969eb59a0dec34daaafd69a29",
+  "variable:CLOUDFLARE_DOMAIN": "cameronaziz.workers.dev",
+  "variable:SECRETS_STORE_ID": "5376e6440f0a470496364c1a036ecac8",
+  "variable:SLACK_CHANNEL": "C0BA8G3UFNJ",
+  "variable:SLACK_APP_ID": "A0BA7JJ1LKX"
+}

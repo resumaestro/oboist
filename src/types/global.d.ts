@@ -5,6 +5,7 @@ declare module 'cloudflare:workers' {
   type DatabaseStatement = {
     all(): Promise<D1Result<unknown>>;
     bind(...values: unknown[]): DatabaseStatement;
+    run(): Promise<D1Result<unknown>>;
   };
 
   type DatabaseClient = Pick<D1Database, 'exec'> & {

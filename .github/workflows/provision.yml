@@ -1,0 +1,103 @@
+name: Provision
+
+on:
+  push:
+    branches: [main]
+  merge_group:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: provision
+  cancel-in-progress: false
+
+jobs:
+  provision-staging:
+    name: Provision (staging)
+    runs-on: ubuntu-latest
+    environment: sandbox-lock
+    outputs:
+      passed: ${{ steps.provision.outputs.passed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Provision staging
+        id: provision
+        uses: resumaestro/pit-boss/actions/provision@main
+        with:
+          target: STAGING
+          is_production: "false"
+          provision_dir: provision/pipeline
+          proxy_url: ${{ vars.OBOIST_URL }}
+          proxy_token: ${{ secrets.OBOIST_SECRET }}
+
+  provision-production:
+    name: Provision (production)
+    needs: provision-staging
+    runs-on: ubuntu-latest
+    environment: sandbox-lock
+    outputs:
+      passed: ${{ steps.provision.outputs.passed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Provision production
+        id: provision
+        uses: resumaestro/pit-boss/actions/provision@main
+        with:
+          target: PRODUCTION
+          is_production: "true"
+          provision_dir: provision/pipeline
+          proxy_url: ${{ vars.OBOIST_URL }}
+          proxy_token: ${{ secrets.OBOIST_SECRET }}
+
+  open-revert-pr:
+    name: Open revert PR
+    needs: [provision-staging, provision-production]
+    if: |
+      always() &&
+      failure() &&
+      github.event_name != 'merge_group' &&
+      (needs.provision-staging.result == 'failure' || needs.provision-production.result == 'failure')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Open revert PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="revert/provision-${{ github.sha }}"
+          BRANCH="${BRANCH:0:50}"
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git revert --no-edit "${{ github.sha }}"
+          git push origin "$BRANCH"
+
+          gh pr create \
+            --repo resumaestro/resumaestro \
+            --title "Revert: provision failed (${{ github.sha }})" \
+            --body "$(cat <<'EOF'
+          ## Automated revert
+
+          Provisioning failed on commit ${{ github.sha }}.
+
+          **To fix:** correct the failing migration or seed, then re-merge.
+
+          See the [failed workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.
+          EOF
+          )" \
+            --base main \
+            --head "$BRANCH"
