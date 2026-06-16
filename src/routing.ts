@@ -65,6 +65,9 @@ export function parseRoute(request: Request): Route {
           throw new HttpError(404, 'Not found');
       }
     case 'apply':
+      if (target === 'rollback') {
+        return { action: 'applyRollback' };
+      }
       return {
         action: 'apply',
         target: null,

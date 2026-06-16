@@ -2,6 +2,7 @@ import { requireAuthorization } from '#/auth';
 import { createJsonResponse, HttpError } from '#/http';
 import { postReadSecrets, postUpdateManifest, postUpdateSecrets } from '#/routes/admin';
 import { postApply } from '#/routes/apply';
+import { postApplyRollback } from '#/routes/apply-rollback';
 import { postOperation } from '#/routes/operation';
 import { postSnapshot } from '#/routes/snapshot';
 import { getStatus } from '#/routes/status';
@@ -30,6 +31,8 @@ async function handleRequest(request: Request): Promise<Response> {
           return postOperation(route, request);
         case 'apply':
           return postApply(route, request);
+        case 'applyRollback':
+          return postApplyRollback(route, request);
         case 'snapshot':
           return postSnapshot(route, request);
         case 'updateManifest':

@@ -48,3 +48,11 @@ id = "0178e5c12f4945f0a230ac7d1f04b4fa"
 [[kv_namespaces]]
 binding = "RESUMAESTRO_PIPELINE"
 id = "2deb366330814a7ea7de36072fccaa77"
+
+[[kv_namespaces]]
+binding = "RESUMAESTRO_CONFIG_SNAPSHOT"
+id = "4006f1632f5a4820842db5fbdc64c8d7"
+
+[[kv_namespaces]]
+binding = "RESUMAESTRO_PIPELINE_SNAPSHOT"
+id = "b5a45fcc545445d6afacdfa53524a340"

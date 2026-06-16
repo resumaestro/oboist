@@ -31,6 +31,10 @@ export type ApplyRoute = {
   target: Store | null;
 };
 
+export type ApplyRollbackRoute = {
+  action: 'applyRollback';
+};
+
 export type StatusRoute = {
   action: 'status';
   target: Store;
@@ -54,6 +58,7 @@ export type Route =
   | OperationRoute
   | SnapshotRoute
   | ApplyRoute
+  | ApplyRollbackRoute
   | StatusRoute
   | UpdateManifestRoute
   | TokenRoute
