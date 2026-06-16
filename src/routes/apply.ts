@@ -23,20 +23,6 @@ export async function postApply(
   const apply = parseApplyRequest(value, key);
 
   const kv = resolveKv(apply.target);
-  const snapshotKv = resolveSnapshotKv(apply.target);
-
-  // Snapshot current KV state before applying
-  const snapshot: Record<string, string> = {};
-  let cursor: string | undefined;
-  do {
-    const page = await kv.list({ cursor });
-    for (const item of page.keys) {
-      const val = await kv.get(item.name);
-      if (val !== null) snapshot[item.name] = val;
-    }
-    cursor = page.list_complete ? undefined : page.cursor;
-  } while (cursor !== undefined);
-  await snapshotKv.put(`v${apply.version}`, JSON.stringify(snapshot));
 
   const applied: Array<{ key: string; value: string }> = [];
   for (const [k, v] of Object.entries(apply.payload)) {
@@ -76,16 +62,6 @@ function resolveKv(target: string): KVNamespace {
     return env.RESUMAESTRO_PIPELINE;
   }
   throw new HttpError(400, `unknown target: ${target}`);
-}
-
-function resolveSnapshotKv(target: string): KVNamespace {
-  if (target === 'RESUMAESTRO_CONFIG') {
-    return env.RESUMAESTRO_CONFIG_SNAPSHOT;
-  }
-  if (target === 'RESUMAESTRO_PIPELINE') {
-    return env.RESUMAESTRO_PIPELINE_SNAPSHOT;
-  }
-  throw new HttpError(400, `unknown snapshot target: ${target}`);
 }
 
 function parseApplyRequest(value: unknown, key: string): ApplyRequest {

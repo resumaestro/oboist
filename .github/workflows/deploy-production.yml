@@ -68,26 +68,8 @@ jobs:
           proxy_url: ${{ vars.OBOIST_URL }}
           proxy_token: ${{ secrets.OBOIST_SECRET }}
 
-  rollback-apply:
-    name: Rollback apply (KV)
-    needs: [apply, secrets-sync, deploy]
-    if: |
-      always() &&
-      needs.apply.result == 'success' &&
-      (needs.secrets-sync.result == 'failure' || needs.deploy.result == 'failure')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Rollback apply
-        uses: resumaestro/pit-boss/actions/provision/apply-rollback@main
-        with:
-          target: RESUMAESTRO_CONFIG
-          version: ${{ needs.apply.outputs.apply_version }}
-          proxy_url: ${{ vars.OBOIST_URL }}
-          proxy_token: ${{ secrets.OBOIST_SECRET }}
-
-  rollback-database:
-    name: Rollback database
+  rollback:
+    name: Rollback provision
     needs: [provision-staging, provision-production, apply, secrets-sync, deploy]
     if: |
       always() &&
@@ -112,10 +94,8 @@ jobs:
           echo "target_migration=$PREV" >> "$GITHUB_OUTPUT"
           echo "skip=false" >> "$GITHUB_OUTPUT"
       - name: Rollback staging
-        if: |
-          steps.read-target.outputs.skip != 'true' &&
-          needs.provision-staging.result == 'success'
-        uses: resumaestro/pit-boss/actions/provision/database-rollback@main
+        if: steps.read-target.outputs.skip != 'true'
+        uses: resumaestro/pit-boss/actions/provision/rollback@main
         with:
           target: STAGING
           provision_dir: provision/pipeline
@@ -123,10 +103,8 @@ jobs:
           proxy_url: ${{ vars.OBOIST_URL }}
           proxy_token: ${{ secrets.OBOIST_SECRET }}
       - name: Rollback production
-        if: |
-          steps.read-target.outputs.skip != 'true' &&
-          needs.provision-production.result == 'success'
-        uses: resumaestro/pit-boss/actions/provision/database-rollback@main
+        if: steps.read-target.outputs.skip != 'true'
+        uses: resumaestro/pit-boss/actions/provision/rollback@main
         with:
           target: PRODUCTION
           provision_dir: provision/pipeline
@@ -136,11 +114,11 @@ jobs:
 
   open-revert-pr:
     name: Open revert PR
-    needs: [provision-staging, provision-production, apply, secrets-sync, deploy, rollback-apply, rollback-database]
+    needs: [provision-staging, provision-production, apply, secrets-sync, deploy, rollback]
     if: |
       always() &&
       failure() &&
-      (needs.provision-staging.result == 'failure' || needs.provision-production.result == 'failure' || needs.apply.result == 'failure' || needs.secrets-sync.result == 'failure' || needs.deploy.result == 'failure' || needs.rollback-apply.result == 'failure' || needs.rollback-database.result == 'failure')
+      (needs.provision-staging.result == 'failure' || needs.provision-production.result == 'failure' || needs.apply.result == 'failure' || needs.secrets-sync.result == 'failure' || needs.deploy.result == 'failure')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -150,58 +128,38 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set +e
-
           BRANCH="revert/provision-${{ github.sha }}"
           BRANCH="${BRANCH:0:50}"
 
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout -b "$BRANCH"
-
-          PARENT_COUNT=$(git cat-file -p "${{ github.sha }}" | grep -c '^parent ')
-          if [[ "$PARENT_COUNT" -gt 1 ]]; then
-            git revert --no-edit -m 1 "${{ github.sha }}"
-          else
-            git revert --no-edit "${{ github.sha }}"
-          fi
-
-          if ! git push origin "$BRANCH" 2>&1; then
-            echo "::warning::Failed to push revert branch $BRANCH — it may already exist."
-            exit 0
-          fi
-
-          if gh pr view --repo resumaestro/oboist "$BRANCH" &>/dev/null; then
-            echo "::warning::Revert PR for $BRANCH already exists, skipping."
-            exit 0
-          fi
+          git revert --no-edit "${{ github.sha }}"
+          git push origin "$BRANCH"
 
           gh pr create \
             --repo resumaestro/oboist \
-            --title "Revert: deploy failed (${{ github.sha }})" \
+            --title "Revert: provision failed (${{ github.sha }})" \
             --body "$(cat <<'EOF'
           ## Automated revert
 
-          Deploy failed on commit ${{ github.sha }}.
+          Provisioning failed on commit ${{ github.sha }}.
 
-          **To fix:** correct the issue and re-merge.
+          **To fix:** correct the failing migration or seed, then re-merge.
 
           See the [failed workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.
           EOF
           )" \
             --base main \
-            --head "$BRANCH" || echo "::warning::gh pr create failed — PR may already exist."
+            --head "$BRANCH"
 
   apply:
     name: Apply
     needs: provision-production
     runs-on: ubuntu-latest
-    outputs:
-      apply_version: ${{ steps.apply.outputs.apply_version }}
     steps:
       - uses: actions/checkout@v4
       - name: Apply
-        id: apply
         uses: resumaestro/pit-boss/actions/provision/apply@main
         with:
           provision_dir: provision/kv

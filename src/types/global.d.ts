@@ -20,9 +20,7 @@ declare module 'cloudflare:workers' {
     SANDBOX: DatabaseClient;
     STAGING: DatabaseClient;
     RESUMAESTRO_CONFIG: KVNamespace;
-    RESUMAESTRO_CONFIG_SNAPSHOT: KVNamespace;
     RESUMAESTRO_PIPELINE: KVNamespace;
-    RESUMAESTRO_PIPELINE_SNAPSHOT: KVNamespace;
     SECRETS_STORE_ID: string;
     SLACK_APP_ID: string;
     SLACK_CONFIG_REFRESH_TOKEN: SecretsStoreSecret;
