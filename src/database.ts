@@ -10,6 +10,8 @@ export function selectDatabase(
   const value = requested === undefined ? routeTarget : requested;
 
   switch (value.toLowerCase()) {
+    case 'resumaestro_config':
+    case 'resumaestro_pipeline':
     case 'resumaestro-pipeline':
     case 'production':
       return {
