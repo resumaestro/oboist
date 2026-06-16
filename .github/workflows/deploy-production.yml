@@ -86,11 +86,12 @@ jobs:
           proxy_url: ${{ vars.OBOIST_URL }}
           proxy_token: ${{ secrets.OBOIST_SECRET }}
 
-  rollback-database:
-    name: Rollback database
-    needs: [provision-staging, provision-production, apply, secrets-sync, deploy]
+  rollback-database-staging:
+    name: Rollback database (staging)
+    needs: [provision-staging, apply, secrets-sync, deploy]
     if: |
       always() &&
+      needs.provision-staging.result == 'success' &&
       (needs.apply.result == 'failure' || needs.secrets-sync.result == 'failure' || needs.deploy.result == 'failure')
     runs-on: ubuntu-latest
     steps:
@@ -112,9 +113,7 @@ jobs:
           echo "target_migration=$PREV" >> "$GITHUB_OUTPUT"
           echo "skip=false" >> "$GITHUB_OUTPUT"
       - name: Rollback staging
-        if: |
-          steps.read-target.outputs.skip != 'true' &&
-          needs.provision-staging.result == 'success'
+        if: steps.read-target.outputs.skip != 'true'
         uses: resumaestro/pit-boss/actions/provision/database-rollback@main
         with:
           target: STAGING
@@ -122,10 +121,35 @@ jobs:
           target_migration: ${{ steps.read-target.outputs.target_migration }}
           proxy_url: ${{ vars.OBOIST_URL }}
           proxy_token: ${{ secrets.OBOIST_SECRET }}
+
+  rollback-database-production:
+    name: Rollback database (production)
+    needs: [provision-production, apply, secrets-sync, deploy]
+    if: |
+      always() &&
+      needs.provision-production.result == 'success' &&
+      (needs.apply.result == 'failure' || needs.secrets-sync.result == 'failure' || needs.deploy.result == 'failure')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Read rollback target
+        id: read-target
+        shell: bash
+        run: |
+          CONFIG="provision/pipeline/config.yml"
+          if [[ ! -f "$CONFIG" ]]; then
+            echo "No config.yml found; skipping rollback."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          VERSION=$(yq -r '.operation_versions.migration // 0' "$CONFIG")
+          PREV=$(( VERSION - 1 ))
+          echo "target_migration=$PREV" >> "$GITHUB_OUTPUT"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
       - name: Rollback production
-        if: |
-          steps.read-target.outputs.skip != 'true' &&
-          needs.provision-production.result == 'success'
+        if: steps.read-target.outputs.skip != 'true'
         uses: resumaestro/pit-boss/actions/provision/database-rollback@main
         with:
           target: PRODUCTION
@@ -136,11 +160,11 @@ jobs:
 
   open-revert-pr:
     name: Open revert PR
-    needs: [provision-staging, provision-production, apply, secrets-sync, deploy, rollback-apply, rollback-database]
+    needs: [provision-staging, provision-production, apply, secrets-sync, deploy, rollback-apply, rollback-database-staging, rollback-database-production]
     if: |
       always() &&
       failure() &&
-      (needs.provision-staging.result == 'failure' || needs.provision-production.result == 'failure' || needs.apply.result == 'failure' || needs.secrets-sync.result == 'failure' || needs.deploy.result == 'failure' || needs.rollback-apply.result == 'failure' || needs.rollback-database.result == 'failure')
+      (needs.provision-staging.result == 'failure' || needs.provision-production.result == 'failure' || needs.apply.result == 'failure' || needs.secrets-sync.result == 'failure' || needs.deploy.result == 'failure' || needs.rollback-apply.result == 'failure' || needs.rollback-database-staging.result == 'failure' || needs.rollback-database-production.result == 'failure')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
