@@ -68,13 +68,57 @@ jobs:
           proxy_url: ${{ vars.OBOIST_URL }}
           proxy_token: ${{ secrets.OBOIST_SECRET }}
 
+  rollback:
+    name: Rollback provision
+    needs: [provision-staging, provision-production, apply, secrets-sync, deploy]
+    if: |
+      always() &&
+      (needs.apply.result == 'failure' || needs.secrets-sync.result == 'failure' || needs.deploy.result == 'failure')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Read rollback target
+        id: read-target
+        shell: bash
+        run: |
+          CONFIG="provision/pipeline/config.yml"
+          if [[ ! -f "$CONFIG" ]]; then
+            echo "No config.yml found; skipping rollback."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          VERSION=$(yq -r '.operation_versions.migration // 0' "$CONFIG")
+          PREV=$(( VERSION - 1 ))
+          echo "target_migration=$PREV" >> "$GITHUB_OUTPUT"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+      - name: Rollback staging
+        if: steps.read-target.outputs.skip != 'true'
+        uses: resumaestro/pit-boss/actions/provision/rollback@main
+        with:
+          target: STAGING
+          provision_dir: provision/pipeline
+          target_migration: ${{ steps.read-target.outputs.target_migration }}
+          proxy_url: ${{ vars.OBOIST_URL }}
+          proxy_token: ${{ secrets.OBOIST_SECRET }}
+      - name: Rollback production
+        if: steps.read-target.outputs.skip != 'true'
+        uses: resumaestro/pit-boss/actions/provision/rollback@main
+        with:
+          target: PRODUCTION
+          provision_dir: provision/pipeline
+          target_migration: ${{ steps.read-target.outputs.target_migration }}
+          proxy_url: ${{ vars.OBOIST_URL }}
+          proxy_token: ${{ secrets.OBOIST_SECRET }}
+
   open-revert-pr:
     name: Open revert PR
-    needs: [provision-staging, provision-production]
+    needs: [provision-staging, provision-production, apply, secrets-sync, deploy, rollback]
     if: |
       always() &&
       failure() &&
-      (needs.provision-staging.result == 'failure' || needs.provision-production.result == 'failure')
+      (needs.provision-staging.result == 'failure' || needs.provision-production.result == 'failure' || needs.apply.result == 'failure' || needs.secrets-sync.result == 'failure' || needs.deploy.result == 'failure')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
