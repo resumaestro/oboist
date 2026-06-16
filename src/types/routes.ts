@@ -35,6 +35,14 @@ export type ApplyRollbackRoute = {
   action: 'applyRollback';
 };
 
+export type DeployTokenCreateRoute = {
+  action: 'deployTokenCreate';
+};
+
+export type DeployTokenRemoveRoute = {
+  action: 'deployTokenRemove';
+};
+
 export type StatusRoute = {
   action: 'status';
   target: Store;
@@ -63,4 +71,6 @@ export type Route =
   | UpdateManifestRoute
   | TokenRoute
   | UpdateSecretsRoute
-  | ReadSecretsRoute;
+  | ReadSecretsRoute
+  | DeployTokenCreateRoute
+  | DeployTokenRemoveRoute;

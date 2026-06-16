@@ -1,9 +1,9 @@
 cloudflare:
   scope:
-    - API Tokens Read
     - Workers Scripts Write
     - D1 Write
     - Secrets Store Write
+    - API Tokens Write
   variable:
     - CLOUDFLARE_ACCOUNT_ID
     - SECRETS_STORE_ID

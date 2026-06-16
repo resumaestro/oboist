@@ -49,6 +49,15 @@ export function parseRoute(request: Request): Route {
             default:
               throw new HttpError(404, 'Not found');
           }
+        case 'deploy-token':
+          switch (action) {
+            case 'create':
+              return { action: 'deployTokenCreate' };
+            case 'remove':
+              return { action: 'deployTokenRemove' };
+            default:
+              throw new HttpError(404, 'Not found');
+          }
         case 'token': {
           const params = new URL(request.url).searchParams;
           const kind = params.get('kind');
